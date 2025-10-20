@@ -1,7 +1,8 @@
 use std::net::{TcpListener, TcpStream};
 use std::io::{Read,Write};
 use std::collections::HashMap;
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
+use std::thread;
 
 fn split_command(buf: &str) -> Vec<&str> {
 	buf.split_whitespace().clone().collect()
@@ -66,16 +67,20 @@ fn main() -> std::io::Result<()> {
 	let listener = TcpListener::bind("127.0.0.1:35545")?;
 	let cache: HashMap<String, String> = HashMap::new();
 	let cache_lock = RwLock::new(cache);
+	let cache_arc = Arc::new(cache_lock);
 
 	for stream in listener.incoming() {
 		match stream {
 			Ok(stream) => {
-				match handle_connection(&cache_lock, stream) {
-					Ok(_) => {},
-					Err(err) => {
-						panic!("Stream Error: {}", err)
+				let cache_lock_handle = Arc::clone(&cache_arc);
+				thread::spawn(move || {
+					match handle_connection(&cache_lock_handle, stream) {
+						Ok(_) => {},
+						Err(err) => {
+							panic!("Stream Error: {}", err)
+						}
 					}
-				}
+				});
 			}
 			Err(err) => {
 				return Err(err)
