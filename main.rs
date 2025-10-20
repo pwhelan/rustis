@@ -19,34 +19,43 @@ fn handle_connection(cache_lock: &RwLock<HashMap<String, String>>, mut stream: T
 				let command_tokens = split_command(&commands);
 
 				if command_tokens[0] == "GET" {
-					match cache_lock.read() {
-						Ok(cache) => {
-							match cache.get(command_tokens[1]) {
-								Some(value) => {
-									let response = format!("OK:{}\n", value);
-									stream.write(response.as_bytes())?;
-								},
-								None => {
-									stream.write("ERR:NOT_FOUND\n".as_bytes())?;
-								},
-							};
-						},
-						Err(_) => {
-							panic!("CacheLock has been poisoned");
+					if command_tokens.len() < 2 {
+						stream.write("ERR:MISSING_ARGUMENTS\n".as_bytes())?;
+					}
+					else {
+						match cache_lock.read() {
+							Ok(cache) => {
+								match cache.get(command_tokens[1]) {
+									Some(value) => {
+										let response = format!("OK:{}\n", value);
+										stream.write(response.as_bytes())?;
+									},
+									None => {
+										stream.write("ERR:NOT_FOUND\n".as_bytes())?;
+									},
+								};
+							},
+							Err(_) => {
+								panic!("CacheLock has been poisoned");
+							}
 						}
 					}
 				} else if command_tokens[0] == "SET" {
-					match cache_lock.write() {
-						Ok(mut cache) => {
-							let key = command_tokens[1].to_owned();
-							let val = command_tokens[2].to_owned();
+					if command_tokens.len() < 2 {
+						stream.write("ERR:MISSING_ARGUMENTS\n".as_bytes())?;
+					} else {
+						match cache_lock.write() {
+							Ok(mut cache) => {
+								let key = command_tokens[1].to_owned();
+								let val = command_tokens[2].to_owned();
 
-							cache.insert(key, val);
+								cache.insert(key, val);
 
-							stream.write("OK\n".as_bytes())?;
-						},
-						Err(_) => {
-							panic!("CacheLock has been poisoned");
+								stream.write("OK\n".as_bytes())?;
+							},
+							Err(_) => {
+								panic!("CacheLock has been poisoned");
+							}
 						}
 					}
 				} else if command_tokens[0] == "QUIT" {
