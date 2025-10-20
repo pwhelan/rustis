@@ -6,32 +6,9 @@ fn split_command(buf: &str) -> Vec<&str> {
 	buf.split_whitespace().clone().collect()
 }
 
-enum HandleConnectionError {
-	UTF8Error(std::string::FromUtf8Error),
-	IOError(std::io::Error),
-}
-
-impl std::fmt::Display for HandleConnectionError {
-	fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		match self {
-			HandleConnectionError::IOError(err) => {
-				fmt.write_str(&err.to_string())
-			},
-			HandleConnectionError::UTF8Error(err) => {
-				fmt.write_str(&err.to_string())			
-			}
-		}
-	}
-}
-
-fn handle_connection(cache: &mut HashMap<String, String>, mut stream: TcpStream) -> Result<usize, HandleConnectionError> {
+fn handle_connection(cache: &mut HashMap<String, String>, mut stream: TcpStream) -> Result<usize, Box<dyn std::error::Error>> {
 	let mut buf: Vec<u8> = vec![0; 1024];
-	match stream.read(&mut buf) {
-		Ok(_) => {},
-		Err(err) => {
-			return Err(HandleConnectionError::IOError(err))
-		}
-	};
+	stream.read(&mut buf)?;
 
 	match String::from_utf8(buf) {
 		Ok(commands) => {
@@ -40,21 +17,11 @@ fn handle_connection(cache: &mut HashMap<String, String>, mut stream: TcpStream)
 			if command_tokens[0] == "GET" {
 				match cache.get(command_tokens[1]) {
 					Some(value) => {
-						let response = format!("FOUND:{}", value);
-						match stream.write(response.as_bytes()) {
-							Ok(_) => {},
-							Err(err) => {
-								return Err(HandleConnectionError::IOError(err));
-							}
-						};
+						let response = format!("OK:{}", value);
+						stream.write(response.as_bytes())?;
 					},
 					None => {
-						match stream.write("NOT_FOUND".as_bytes()) {
-							Ok(_) => {},
-							Err(err) => {
-								return Err(HandleConnectionError::IOError(err));
-							}
-						};
+						stream.write("ERR:NOT_FOUND".as_bytes())?;
 					},
 				};
 			} else if command_tokens[0] == "SET" {
@@ -63,23 +30,13 @@ fn handle_connection(cache: &mut HashMap<String, String>, mut stream: TcpStream)
 
 				cache.insert(key, val);
 
-				match stream.write("OK".as_bytes()) {
-					Ok(_) => {},
-					Err(err) => {
-						return Err(HandleConnectionError::IOError(err));
-					}
-				};
+				stream.write("OK".as_bytes())?;
 			} else {
-				match stream.write("ERR:BAD_COMMAND".as_bytes()) {
-					Ok(_) => {},
-					Err(err) => {
-						return Err(HandleConnectionError::IOError(err));
-					}
-				};
+				stream.write("ERR:BAD_COMMAND".as_bytes())?;
 			}
 		},
 		Err(err) => {
-			return Err(HandleConnectionError::UTF8Error(err))
+			return Err(Box::new(err))
 		},
 	};
 
@@ -89,7 +46,6 @@ fn handle_connection(cache: &mut HashMap<String, String>, mut stream: TcpStream)
 fn main() -> std::io::Result<()> {
 	let listener = TcpListener::bind("127.0.0.1:35545")?;
 	let mut cache: HashMap<String, String> = HashMap::new();
-
 
 	for stream in listener.incoming() {
 		match stream {
