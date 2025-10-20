@@ -23,11 +23,11 @@ fn handle_connection(cache_lock: &RwLock<HashMap<String, String>>, mut stream: T
 						Ok(cache) => {
 							match cache.get(command_tokens[1]) {
 								Some(value) => {
-									let response = format!("OK:{}", value);
+									let response = format!("OK:{}\n", value);
 									stream.write(response.as_bytes())?;
 								},
 								None => {
-									stream.write("ERR:NOT_FOUND".as_bytes())?;
+									stream.write("ERR:NOT_FOUND\n".as_bytes())?;
 								},
 							};
 						},
@@ -43,7 +43,7 @@ fn handle_connection(cache_lock: &RwLock<HashMap<String, String>>, mut stream: T
 
 							cache.insert(key, val);
 
-							stream.write("OK".as_bytes())?;
+							stream.write("OK\n".as_bytes())?;
 						},
 						Err(_) => {
 							panic!("CacheLock has been poisoned");
@@ -52,7 +52,7 @@ fn handle_connection(cache_lock: &RwLock<HashMap<String, String>>, mut stream: T
 				} else if command_tokens[0] == "QUIT" {
 					return Ok(1);
 				} else {
-					stream.write("ERR:BAD_COMMAND".as_bytes())?;
+					stream.write("ERR:BAD_COMMAND\n".as_bytes())?;
 				}
 			},
 			Err(err) => {
