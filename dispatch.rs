@@ -2,6 +2,7 @@ use std::net::TcpStream;
 use std::io::Write;
 use std::collections::HashMap;
 use std::sync::RwLock;
+use tracing::{event, Level};
 
 #[derive(PartialEq)]
 pub enum Status {
@@ -33,7 +34,7 @@ fn execute_get(
 				Some(value) => {
 					return Ok(Response{
 						status: Status::Ok,
-						payload: String::from(format!("OK:{}\n", value)),
+						payload: format!("OK:{}\n", value),
 					});
 				},
 				None => {
@@ -47,7 +48,7 @@ fn execute_get(
 		Err(_) => {
 			panic!("CacheLock has been poisoned");
 		}
-	}
+	};
 }
 
 fn execute_set(
@@ -107,22 +108,32 @@ pub fn dispatch_command(
 		}
 	];
 
-	for i in 0..commands.len() -1 {
-		if command_tokens[0] == commands[i].verb {
-			if command_tokens.len() < commands[i].arguments {
-				println!("THIS COMMAND IS MISSING ARGUMENTS: {} < {}", 
-					command_tokens.len(), commands[i].arguments);
-				stream.write("ERR:MISSING_ARGUMENTS\n".as_bytes())?;
+	if command_tokens.is_empty() {
+		let _rc = stream.write("ERR:EMPTY_COMMAND\n".as_bytes())?;
+		return Ok(Status::Error);
+	}
+
+	for command in commands {
+		if command_tokens[0] == command.verb {
+
+			event!(Level::DEBUG, verb = command.verb);
+
+			if command_tokens.len()-1 < command.arguments {
+				event!(Level::ERROR, msg="missing arguments",
+				passed=command_tokens.len()-1, wanted=command.arguments);
+				let _rc = stream.write("ERR:MISSING_ARGUMENTS\n".as_bytes())?;
 				return Ok(Status::Error)
 			}
 
-			let resp = (commands[i].function)(cache_lock, command_tokens)?;
-			stream.write(resp.payload.as_bytes())?;
+			let resp = (command.function)(cache_lock, command_tokens)?;
+			let _rc = stream.write(resp.payload.as_bytes())?;
+
+			event!(Level::DEBUG, response=resp.payload);
 
 			return Ok(resp.status)
 		}
 	}
 
-	stream.write("ERR:BAD_COMMAND\n".as_bytes())?;
-	return Ok(Status::Error);
+	let _rc = stream.write("ERR:BAD_COMMAND\n".as_bytes())?;
+	Ok(Status::Error)
 }
